@@ -8,6 +8,8 @@ __XCD_DIRS=()
 __XCD_ORG_IFS=$IFS
 __XCD_CURRENT=$(realpath $(pwd))
 __XCD_CUR=1
+__XCD_SCROLL=0
+__XCD_SCRCNT=0
 __XCD_KEYIN=""
 
 function __xcd_init() {
@@ -35,13 +37,20 @@ function __xcd_render() {
     tput civis
     tput cup 0 0
     tput bold
-    if test $(tput colors) = 256; then
+    if [ $(tput colors) = 256 ]; then
         tput setaf 2
     fi
     echo $__XCD_CURRENT
 
+    __XCD_SCRCNT=$((0-__XCD_SCROLL))
     for item in ${__XCD_DIRS[@]}; do
-        if test $(tput colors) = 256; then
+        if [ $((__XCD_SCRCNT++)) -lt 0 ]; then
+            continue
+        elif [ $__XCD_SCRCNT -gt $((__XCD_ROWS - 2)) ]; then
+            break
+        fi                          
+
+        if [ $(tput colors) = 256 ]; then
             if test -d $(realpath "$__XCD_CURRENT/$item"); then
                 tput setaf 4
                 tput bold
@@ -63,6 +72,7 @@ function __xcd_loaddir() {
     __XCD_DIRS=(..
     $(ls -1 --group-directories-first $__XCD_CURRENT))
     IFS=$__XCD_ORG_IFS
+    __XCD_SCROLL=0
 }
 
 function __xcd_readkey() {
@@ -93,12 +103,24 @@ function __xcd_readkey() {
 }
 
 function __xcd_movcur() {
-    if test $# = 1; then
+    if [ $# = 1 ]; then
         __XCD_CUR=$(($__XCD_CUR + $1))
-        if test $__XCD_CUR -lt 0; then
+        if [ $__XCD_CUR -lt 0 ]; then
             __XCD_CUR=0
-        elif test $__XCD_CUR -ge ${#__XCD_DIRS[*]}; then
-            __XCD_CUR=$((${#__XCD_DIRS[*]} - 1))
+            if [ $__XCD_SCROLL -gt 0 ]; then
+                __XCD_SCROLL=$(($__XCD_SCROLL-1))
+                __xcd_clear
+                __xcd_render
+            fi
+        elif [ $__XCD_CUR -ge $(($__XCD_ROWS - 3)) ]; then
+            __XCD_CUR=$(($__XCD_CUR - $1))
+            if [ $(($__XCD_CUR+$__XCD_SCROLL+1)) -lt ${#__XCD_DIRS[*]} ]; then
+                __XCD_SCROLL=$(($__XCD_SCROLL + 1))
+                __xcd_clear
+                __xcd_render  
+            fi
+        elif [ $__XCD_CUR -ge ${#__XCD_DIRS[*]} ]; then
+            __XCD_CUR=$(($__XCD_CUR - $1))
         fi
 
         __xcd_render_cur
@@ -149,7 +171,7 @@ do
         "[Up]")    __xcd_movcur -1 ;;
         "[Down]")  __xcd_movcur 1  ;;
         "[Left]")  __xcd_movdir .. ;;
-        "[Right]") __xcd_movdir "${__XCD_DIRS[$__XCD_CUR]}" ;;
+        "[Right]") __xcd_movdir "${__XCD_DIRS[$((__XCD_CUR+__XCD_SCROLL))]}" ;;
         "[Enter]") cd $__XCD_CURRENT && break ;;
     esac
 
@@ -170,6 +192,8 @@ unset -v __XCD_ORG_IFS
 unset -v __XCD_ORG_CURRENT
 unset -v __XCD_CUR
 unset -v __XCD_KEYIN
+unset -v __XCD_SCROLL
+unset -v __XCD_SCRCNT
 unset -f __xcd_init
 unset -f __xcd_clear
 unset -f __xcd_fill
